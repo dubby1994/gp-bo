@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GP-BO · 高斯过程贝叶斯优化工具</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230f1419'/%3E%3Ctext x='32' y='42' font-size='36' text-anchor='middle' fill='%233dd68c' font-family='monospace'%3EG%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div>
+    <h1 data-i18n="title">GP-BO · 高斯过程贝叶斯优化</h1>
+    <div class="subtitle" data-i18n="subtitle">Gaussian Process + Bayesian Optimization · 多参数寻优</div>
+  </div>
+  <div class="actions">
+    <button onclick="exportJSON()" data-i18n="exportJson">导出 JSON</button>
+    <button onclick="exportCSV()" data-i18n="exportCsv">导出 CSV</button>
+    <button onclick="downloadTemplate()" data-i18n="downloadTemplate">下载模板</button>
+    <button onclick="document.getElementById('importFile').click()" data-i18n="importData">导入数据</button>
+    <input type="file" id="importFile" accept=".json,.csv" style="display:none" onchange="importData(event)">
+    <button onclick="loadDemo()" data-i18n="demoData">示例数据</button>
+    <button onclick="toggleTheme()" id="themeBtn" style="min-width: 56px;" title="切换主题">🌙</button>
+    <button onclick="toggleLang()" id="langBtn" style="min-width: 56px;">中文</button>
+  </div>
+</header>
+
+<main>
+  <!-- 参数定义 -->
+  <section class="panel">
+    <h2><span data-i18n="paramDef">参数定义</span> <span class="badge" id="paramCount">0 个参数</span></h2>
+    <div class="params-list" id="paramsList"></div>
+    <div class="row">
+      <button onclick="addParam()" class="small" data-i18n="addParam">+ 添加参数</button>
+      <button onclick="clearParams()" class="small danger" data-i18n="clear">清空</button>
+    </div>
+  </section>
+
+  <!-- 优化设置 -->
+  <section class="panel">
+    <h2 data-i18n="optSettings">优化设置</h2>
+    <div class="row" style="margin-bottom: 8px;">
+      <div>
+        <label data-i18n="optGoal">优化目标</label>
+        <select id="optGoal">
+          <option value="max" data-i18n="maximize">最大化 (max)</option>
+          <option value="min" data-i18n="minimize">最小化 (min)</option>
+        </select>
+      </div>
+      <div>
+        <label data-i18n="acqFuncLabel">采集函数</label>
+        <select id="acqFunc">
+          <option value="ei" data-i18n="acqEi">EI · 期望改进</option>
+          <option value="ucb" data-i18n="acqUcb">UCB · 置信上界</option>
+          <option value="pi" data-i18n="acqPi">PI · 改进概率</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" style="margin-bottom: 8px;">
+      <div>
+        <label data-i18n="acqKappa">采集函数参数</label>
+        <input type="number" id="acqKappa" value="1.96" step="0.1">
+      </div>
+      <div>
+        <label data-i18n="kernelLabel">核函数</label>
+        <select id="kernelType">
+          <option value="rbf" data-i18n="kernelRbf">RBF · 平方指数</option>
+          <option value="matern32">Matérn 3/2</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label data-i18n="nRestarts">超参数优化重启次数</label>
+        <input type="number" id="nRestarts" value="10" min="1" max="50">
+      </div>
+      <div>
+        <label data-i18n="nCandidates">采集函数采样数</label>
+        <input type="number" id="nCandidates" value="5000" min="100" step="100">
+      </div>
+    </div>
+    <div class="help" data-i18n="acqHelp">
+      <b>EI ξ</b> / <b>UCB κ</b> 较大→更探索，较小→更利用。<br>
+      推荐: EI ξ=0.01, UCB κ=2~5, PI ξ=0.1。
+    </div>
+  </section>
+
+  <!-- 试验数据 -->
+  <section class="panel full">
+    <h2>
+      <span data-i18n="expData">试验数据</span> <span class="badge" id="dataCount">0 条记录</span>
+      <span style="display:flex; gap:6px;">
+        <button class="small" onclick="addRow()" data-i18n="addRow">+ 添加记录</button>
+        <button class="small danger" onclick="clearData()" data-i18n="clear">清空</button>
+      </span>
+    </h2>
+    <div class="scroll">
+      <table id="dataTable">
+        <thead><tr id="dataHeader"></tr></thead>
+        <tbody id="dataBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 操作 -->
+  <section class="panel full">
+    <div class="row" style="justify-content: center; gap: 12px;">
+      <button class="primary" onclick="runOptimization()" style="flex:0 0 auto; padding: 10px 28px; font-size: 14px;" data-i18n="runOpt">
+        ▶ 运行优化 · 推荐下一个试验点
+      </button>
+      <button onclick="verifyOptimum()" style="flex:0 0 auto;" data-i18n="verifyOpt">验证当前最优</button>
+      <button onclick="acceptSuggestion()" style="flex:0 0 auto;" data-i18n="acceptSugg">采纳建议点(空 y)</button>
+    </div>
+  </section>
+
+  <!-- 结果 -->
+  <section class="panel">
+    <h2 data-i18n="optResults">优化结果</h2>
+    <div id="resultsBlock">
+      <div class="empty" data-i18n="runToSee">运行优化后显示结果</div>
+    </div>
+  </section>
+
+  <!-- 模型信息 -->
+  <section class="panel">
+    <h2 data-i18n="modelInfo">模型信息</h2>
+    <div id="modelInfo">
+      <div class="empty" data-i18n="notFitted">未拟合</div>
+    </div>
+  </section>
+
+  <!-- 可视化 -->
+  <section class="panel full">
+    <h2 data-i18n="visualization">可视化</h2>
+    <div class="viz-tabs" id="vizTabs"></div>
+    <div id="vizArea">
+      <div class="empty" data-i18n="needData2">需要至少 2 条数据才能可视化</div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
