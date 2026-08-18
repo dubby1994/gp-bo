@@ -18,7 +18,7 @@
     <button onclick="exportCSV()" data-i18n="exportCsv">导出 CSV</button>
     <button onclick="downloadTemplate()" data-i18n="downloadTemplate">下载模板</button>
     <button onclick="document.getElementById('importFile').click()" data-i18n="importData">导入数据</button>
-    <input type="file" id="importFile" accept=".json,.csv" style="display:none" onchange="importData(event)">
+    <input type="file" id="importFile" accept=".json,.xlsx,.xls" style="display:none" onchange="importData(event)">
     <button onclick="loadDemo()" data-i18n="demoData">示例数据</button>
     <button onclick="toggleTheme()" id="themeBtn" style="min-width: 56px;" title="切换主题">🌙</button>
     <button onclick="toggleLang()" id="langBtn" style="min-width: 56px;">中文</button>
@@ -141,6 +141,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="vendor/xlsx.full.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

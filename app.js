@@ -59,7 +59,7 @@ const I18N = {
     exportedCsv: "已导出 CSV",
     imported: n => `导入成功: ${n} 条记录`,
     importFail: "导入失败: ",
-    templateDownloaded: "已下载模板 CSV",
+    templateDownloaded: "已下载模板 Excel",
     needRunOpt: "请先运行优化",
     needSuggestion: "请先运行优化得到建议点",
     accepted: "已添加建议点到数据表 (y 待测)",
@@ -175,7 +175,7 @@ const I18N = {
     exportedCsv: "CSV exported",
     imported: n => `Imported: ${n} record${n===1?'':'s'}`,
     importFail: "Import failed: ",
-    templateDownloaded: "Template CSV downloaded",
+    templateDownloaded: "Template Excel downloaded",
     needRunOpt: "Please run optimization first",
     needSuggestion: "Please run optimization to get a suggestion",
     accepted: "Suggestion added to table (y pending)",
@@ -988,6 +988,12 @@ function acceptSuggestion() {
 /* =========================================================================
  *  可视化
  * ========================================================================= */
+// 获取可视化 canvas 可用宽度 (vizArea 内部宽度 - viz-container padding)
+function getVizCanvasWidth() {
+  const area = document.getElementById('vizArea');
+  if (!area) return 900;
+  return Math.max(400, area.clientWidth - 16);
+}
 function renderViz() {
   if (!state.gp) return;
   const dim = state.params.length;
@@ -1027,7 +1033,7 @@ function drawConvergence(area) {
     if ((isMax && d.y > cumBest) || (!isMax && d.y < cumBest)) cumBest = d.y;
     return cumBest;
   });
-  const W = 900, H = 360, pad = { l: 60, r: 25, t: 25, b: 50 };
+  const W = getVizCanvasWidth(), H = 360, pad = { l: 60, r: 25, t: 25, b: 50 };
   const yMin = Math.min(...series), yMax = Math.max(...series);
   const yPad = (yMax - yMin) * 0.1 || 1;
   const yLo = yMin - yPad, yHi = yMax + yPad;
@@ -1080,7 +1086,7 @@ function drawConvergence(area) {
 
 function drawGP1D(area) {
   const { model, yMean, yStd, Xnorm, yRaw } = state.gp;
-  const W = 900, H = 420, pad = { l: 60, r: 25, t: 25, b: 50 };
+  const W = getVizCanvasWidth(), H = 420, pad = { l: 60, r: 25, t: 25, b: 50 };
   const N = 200;
   const p = state.params[0];
   const xsNorm = [];
@@ -1175,7 +1181,7 @@ function drawGP1D(area) {
 
 function drawHeatmap(area) {
   const { model, yMean, yStd, Xnorm } = state.gp;
-  const W = 560, H = 420, pad = { l: 70, r: 55, t: 30, b: 55 };
+  const W = getVizCanvasWidth(), H = Math.round(W * 420 / 560), pad = { l: 70, r: 55, t: 30, b: 55 };
   const N = 80;
   const [p1, p2] = state.params;
   // 预测网格
@@ -1267,9 +1273,10 @@ function drawSurface3D(area) {
   const { model, yMean, yStd, Xnorm } = state.gp;
   const [p1, p2] = state.params;
   const N = 32;                      // 网格分辨率
-  const W = 760, H = 540;
+  const W = getVizCanvasWidth();
+  const H = Math.round(W * 540 / 760);
   const cx = W / 2, cy = H * 0.58;
-  const scale = 9.5;                 // 世界 → 屏幕缩放
+  const scale = W / 760 * 9.5;       // 世界 → 屏幕缩放 (按宽度比例)
   const elev = 32 * Math.PI / 180;   // 仰角 (固定)
   let azim = state.surf3dAzimuth * Math.PI / 180;
 
@@ -1413,12 +1420,19 @@ function drawSlices(area) {
   }
   const xBestNorm = Xnorm[bestIdx];
   const dim = state.params.length;
-  const W = 440, H = 280, pad = { l: 50, r: 20, t: 20, b: 40 };
+  // 按容器宽度计算列数, 让多图整体对齐
+  const totalW = getVizCanvasWidth();
+  const gap = 10;
+  const minCanvasW = 360;
+  const cols = Math.min(dim, Math.max(1, Math.floor((totalW + gap) / (minCanvasW + gap))));
+  const W = Math.floor((totalW - (cols - 1) * gap) / cols);
+  const H = Math.round(W * 280 / 440);
+  const pad = { l: 50, r: 20, t: 20, b: 40 };
   const N = 100;
   const dpr = window.devicePixelRatio || 1;
   const C = TC();
   let html = `<div class="viz-title"><span>${t('sliceTitle')}</span><span>${t('sliceLegend')}</span></div>`;
-  html += `<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 10px;">`;
+  html += `<div style="display:grid; grid-template-columns: repeat(${cols}, ${W}px); gap: ${gap}px; justify-content: center;">`;
   for (let d = 0; d < dim; d++) {
     html += `<canvas id="sliceCanvas${d}" width="${W * dpr}" height="${H * dpr}" style="width:${W}px;height:${H}px;"></canvas>`;
   }
@@ -1555,43 +1569,21 @@ function exportCSV() {
 function importData(event) {
   const file = event.target.files[0];
   if (!file) return;
+  // Excel 用 readAsArrayBuffer, JSON/文本用 readAsText
+  const isExcel = /\.(xlsx|xls)$/i.test(file.name);
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      const text = e.target.result;
       if (file.name.endsWith('.json')) {
-        const obj = JSON.parse(text);
+        const obj = JSON.parse(e.target.result);
         state.params = obj.params || [];
         state.data = obj.data || [];
         if (obj.settings) applySettings(obj.settings);
+      } else if (isExcel) {
+        _importExcel(e.target.result);
       } else {
-        // CSV
-        const allLines = text.trim().split(/\r?\n/);
-        // 跳过空行和以 # 开头的注释行
-        const lines = allLines.filter(l => l.trim() && !l.trim().startsWith('#'));
-        const header = lines[0].split(',').map(s => s.trim());
-        const yIdx = header.length - 1;
-        // 第一个是 y, 其它为参数
-        state.params = header.slice(0, -1).map((name, i) => ({
-          name, min: 0, max: 1, type: 'continuous'
-        }));
-        state.data = lines.slice(1).map(line => {
-          const parts = line.split(',').map(s => s.trim());
-          const x = parts.slice(0, yIdx).map(Number);
-          const yStr = parts[yIdx];
-          return { x, y: yStr === '' ? '' : +yStr };
-        }).filter(d => d.x.every(v => !isNaN(v)));  // 过滤掉无效行
-        // 自动推断参数范围
-        for (let d = 0; d < state.params.length; d++) {
-          const vals = state.data.map(r => r.x[d]).filter(v => !isNaN(v));
-          if (vals.length) {
-            state.params[d].min = Math.min(...vals);
-            state.params[d].max = Math.max(...vals);
-            if (state.params[d].min === state.params[d].max) {
-              state.params[d].min -= 1; state.params[d].max += 1;
-            }
-          }
-        }
+        // 兼容旧 CSV
+        _importCSV(e.target.result);
       }
       renderParams(); renderTable(); clearResults();
       toast(t('imported', state.data.length), 'success');
@@ -1600,7 +1592,66 @@ function importData(event) {
     }
     event.target.value = '';
   };
-  reader.readAsText(file);
+  if (isExcel) reader.readAsArrayBuffer(file);
+  else reader.readAsText(file);
+}
+
+// 从 Excel (xlsx/xls) 导入: 第一行为表头, 最后一列为 y
+function _importExcel(buf) {
+  if (typeof XLSX === 'undefined') throw new Error('XLSX library not loaded');
+  const wb = XLSX.read(buf, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error('Empty workbook');
+  // header:1 返回数组的数组, 第一行作为表头, 其余为数据行
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, raw: true });
+  if (aoa.length === 0) throw new Error('Empty sheet');
+  const header = aoa[0].map(String);
+  const yIdx = header.length - 1;
+  state.params = header.slice(0, -1).map(name => ({ name, min: 0, max: 1, type: 'continuous' }));
+  state.data = aoa.slice(1)
+    .filter(row => row.length > 0 && row.some(c => c !== null && c !== ''))
+    .map(row => {
+      const x = [];
+      for (let i = 0; i < yIdx; i++) {
+        const v = row[i];
+        x.push(typeof v === 'number' ? v : parseFloat(v));
+      }
+      const yCell = row[yIdx];
+      const y = (yCell === null || yCell === undefined || yCell === '') ? '' : +yCell;
+      return { x, y };
+    })
+    .filter(d => d.x.every(v => !isNaN(v)));
+  _inferParamRanges();
+}
+
+// 从 CSV 文本导入 (向后兼容)
+function _importCSV(text) {
+  const allLines = text.trim().split(/\r?\n/);
+  const lines = allLines.filter(l => l.trim() && !l.trim().startsWith('#'));
+  const header = lines[0].split(',').map(s => s.trim());
+  const yIdx = header.length - 1;
+  state.params = header.slice(0, -1).map(name => ({ name, min: 0, max: 1, type: 'continuous' }));
+  state.data = lines.slice(1).map(line => {
+    const parts = line.split(',').map(s => s.trim());
+    const x = parts.slice(0, yIdx).map(Number);
+    const yStr = parts[yIdx];
+    return { x, y: yStr === '' ? '' : +yStr };
+  }).filter(d => d.x.every(v => !isNaN(v)));
+  _inferParamRanges();
+}
+
+// 根据导入数据自动推断参数范围
+function _inferParamRanges() {
+  for (let d = 0; d < state.params.length; d++) {
+    const vals = state.data.map(r => r.x[d]).filter(v => !isNaN(v));
+    if (vals.length) {
+      state.params[d].min = Math.min(...vals);
+      state.params[d].max = Math.max(...vals);
+      if (state.params[d].min === state.params[d].max) {
+        state.params[d].min -= 1; state.params[d].max += 1;
+      }
+    }
+  }
 }
 function getSettings() {
   return {
@@ -1628,9 +1679,10 @@ function download(blob, name) {
 }
 
 /* =========================================================================
- *  下载模板 (基于当前参数定义生成 CSV 模板)
+ *  下载模板 (基于当前参数定义生成 Excel 模板)
  * ========================================================================= */
 function downloadTemplate() {
+  if (typeof XLSX === 'undefined') { toast('XLSX library not loaded', 'error'); return; }
   // 若未定义参数, 使用默认 x1, x2
   let params = state.params;
   if (params.length === 0) {
@@ -1639,21 +1691,27 @@ function downloadTemplate() {
       { name: 'x2', min: 0, max: 10 }
     ];
   }
-  const header = params.map(p => p.name).join(',') + ',y\n';
-  // 给出 3 行示例 (取参数范围中点附近, y 留空)
-  const rows = [];
+  // 构造 AOA (数组 of 数组): 第一行表头 + 3 行示例 + 1 空行 + 2 行注释
+  const header = params.map(p => p.name).concat(['y']);
   const samplePts = [
-    params.map(p => p.min),
-    params.map(p => (p.min + p.max) / 2),
-    params.map(p => p.max)
+    params.map(p => +p.min.toFixed(4)),
+    params.map(p => +((p.min + p.max) / 2).toFixed(4)),
+    params.map(p => +p.max.toFixed(4))
   ];
-  for (const pt of samplePts) {
-    rows.push(pt.map(v => +v.toFixed(4)).join(',') + ',');
-  }
-  // 末尾注释行 (CSV 中以 # 开头, 导入时会被当成数据, 但 y 为空会被忽略)
-  const note = `\n# ${t('templateHeader')}\n# ${t('templateNote')}`;
-  const blob = new Blob([header + rows.join('\n') + note], { type: 'text/csv' });
-  download(blob, 'gp-bo-template.csv');
+  const aoa = [header];
+  for (const pt of samplePts) aoa.push(pt.concat(['']));
+  aoa.push([]);
+  aoa.push(['# ' + t('templateHeader')]);
+  aoa.push(['# ' + t('templateNote')]);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  // 列宽: 表头列宽 12, 注释列加宽
+  ws['!cols'] = header.map(() => ({ wch: 12 }));
+  ws['!cols'][0] = { wch: 60 };  // 注释列宽
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'data');
+  XLSX.writeFile(wb, 'gp-bo-template.xlsx');
   toast(t('templateDownloaded'), 'success');
 }
 
@@ -1669,7 +1727,7 @@ function demoFunc(x1, x2, x3) {
   return Math.exp(-((x1 - 1) ** 2 + (x2 - 1) ** 2 + (x3 - 1) ** 2))
        + 0.7 * Math.exp(-((x1 - 4) ** 2 + (x2 - 4) ** 2 + (x3 - 3) ** 2));
 }
-function loadDemo() {
+function loadDemo(silent = false) {
   state.params = [
     { name: 'x1', min: 0, max: 5, type: 'continuous' },
     { name: 'x2', min: 0, max: 5, type: 'continuous' },
@@ -1690,7 +1748,7 @@ function loadDemo() {
   }));
   document.getElementById('optGoal').value = 'max';
   renderParams(); renderTable(); clearResults();
-  toast(t('demoLoaded'), 'success');
+  if (!silent) toast(t('demoLoaded'), 'success');
 }
 
 /* =========================================================================
@@ -1711,9 +1769,12 @@ function escapeHtml(s) {
 /* =========================================================================
  *  初始化
  * ========================================================================= */
-addParam('x1', 0, 10);
-addParam('x2', 0, 10);
-addRow();
-addRow();
+loadDemo(true);
 applyI18n();
 applyTheme();
+// 窗口大小变化时重绘可视化 (防抖)
+let _resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => { if (state.gp) renderViz(); }, 200);
+});
