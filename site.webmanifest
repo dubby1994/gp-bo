@@ -1,0 +1,18 @@
+{
+    "name": "GP-BO · 高斯过程贝叶斯优化工具",
+    "short_name": "GP-BO",
+    "description": "在线高斯过程贝叶斯优化工具，支持多参数寻优、EI/UCB/PI 采集函数、RBF/Matérn 3/2 核函数、超参数自动优化与可视化。纯前端运行，数据不上传。",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0f1419",
+    "theme_color": "#0f1419",
+    "lang": "zh-CN",
+    "icons": [
+        {
+            "src": "/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ]
+}
